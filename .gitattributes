@@ -1,2 +1,5 @@
 # Normalize line endings so patch fixtures and diffs behave the same on every platform.
 * text=auto eol=lf
+
+# The captured demo is binary; never let end-of-line normalization touch it.
+*.gif binary
