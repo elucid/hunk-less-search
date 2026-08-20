@@ -7,6 +7,9 @@ matching hunk, and `n` / `N` repeat it. The same line then reports where you
 landed, and the matched characters are **marked inside the diff itself** —
 every match highlighted, the one you just jumped to marked more strongly.
 
+![Typing /readConfig at the prompt line, jumping to the first match, and
+stepping through the rest with n and N](demo/less-search.gif)
+
 ```text
 /readConfig█
 ```
@@ -189,6 +192,8 @@ src/prompt.ts    pure: the prompt's key grammar
 src/store.ts     the seam between mode, pane, and commands
 src/pane.tsx     the one-row prompt line
 tests/           bun test coverage for all of it, no terminal required
+demo/            the recorded demo and the fixture changeset it searches
+scripts/         capture-demo.ts, which records that demo from the real TUI
 ```
 
 ## Development
@@ -207,6 +212,23 @@ dispatcher and stop it rendering.
 
 For a real terminal check, run `bun run search` and try `/`, `n`, and `N`
 against an actual diff.
+
+### Recapturing the demo
+
+`demo/less-search.gif` is recorded from the real TUI, not assembled by hand:
+`scripts/capture-demo.ts` drives an actual `hunk` binary over a PTY against
+`demo/config-cache.patch`, renders each terminal state to a retina PNG, and
+encodes the timeline as a looping GIF.
+
+```bash
+bun run capture:demo
+```
+
+It needs `hunk` and `ffmpeg` on PATH (`HUNK=` and `FFMPEG=` override either),
+and it is Unix-oriented and optional — tests never run it. The recording uses a
+throwaway config home carrying the `/` handover above, so what you see is the
+keybinding this README recommends rather than the default `ctrl+f`. Recapture
+when the prompt line, the status wording, or the match marks visibly change.
 
 ## License
 

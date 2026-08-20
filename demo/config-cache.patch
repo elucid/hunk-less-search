@@ -1,0 +1,106 @@
+diff --git a/src/config/load.ts b/src/config/load.ts
+index ebd31e0..8d9f6da 100644
+--- a/src/config/load.ts
++++ b/src/config/load.ts
+@@ -1,4 +1,4 @@
+-import { readFileSync } from "node:fs";
++import { readFileSync, statSync } from "node:fs";
+ import { join } from "node:path";
+ import { parse } from "smol-toml";
+ 
+@@ -14,15 +14,44 @@ const DEFAULTS: Config = {
+   untracked: true,
+ };
+ 
++interface CacheEntry {
++  mtimeMs: number;
++  config: Config;
++}
++
++const cache = new Map<string, CacheEntry>();
++
+ export function readConfig(dir: string): Config {
+   const path = join(dir, "config.toml");
+   const raw = readFileSync(path, "utf8");
+   return { ...DEFAULTS, ...(parse(raw) as Partial<Config>) };
+ }
+ 
++/**
++ * Reads the config at most once per edit, so a watch-driven reload does not
++ * re-parse an unchanged file on every changeset rebuild.
++ */
++export function readConfigCached(dir: string): Config {
++  const path = join(dir, "config.toml");
++  const mtimeMs = statSync(path).mtimeMs;
++  const hit = cache.get(path);
++
++  if (hit && hit.mtimeMs === mtimeMs) {
++    return hit.config;
++  }
++
++  const config = readConfig(dir);
++  cache.set(path, { mtimeMs, config });
++  return config;
++}
++
++export function forgetConfig(dir: string) {
++  cache.delete(join(dir, "config.toml"));
++}
++
+ export function readConfigOrDefaults(dir: string): Config {
+   try {
+-    return readConfig(dir);
++    return readConfigCached(dir);
+   } catch {
+     return DEFAULTS;
+   }
+diff --git a/src/session/serve.ts b/src/session/serve.ts
+index c911ec4..97b5d9a 100644
+--- a/src/session/serve.ts
++++ b/src/session/serve.ts
+@@ -1,4 +1,4 @@
+-import { readConfig } from "../config/load";
++import { forgetConfig, readConfigCached } from "../config/load";
+ 
+ export interface SessionOptions {
+   root: string;
+@@ -6,12 +6,17 @@ export interface SessionOptions {
+ }
+ 
+ export function startSession(options: SessionOptions) {
+-  const config = readConfig(options.root);
++  const config = readConfigCached(options.root);
+   const server = createServer({ port: options.port, theme: config.theme });
+ 
+   server.on("request", (request) => {
+     if (request.path === "/config") {
+-      return respond(readConfig(options.root));
++      return respond(readConfigCached(options.root));
++    }
++
++    if (request.path === "/config/reload") {
++      forgetConfig(options.root);
++      return respond(readConfigCached(options.root));
+     }
+ 
+     return respond({ ok: true });
+diff --git a/tests/config.test.ts b/tests/config.test.ts
+index 4550bcf..035a472 100644
+--- a/tests/config.test.ts
++++ b/tests/config.test.ts
+@@ -1,6 +1,14 @@
+ import { expect, test } from "bun:test";
+-import { readConfig } from "../src/config/load";
++import { forgetConfig, readConfig, readConfigCached } from "../src/config/load";
+ 
+ test("readConfig reads the theme", () => {
+   expect(readConfig("fixtures/themed").theme).toBe("ember");
+ });
++
++test("readConfigCached reuses the parse until the file changes", () => {
++  const first = readConfigCached("fixtures/themed");
++  expect(readConfigCached("fixtures/themed")).toBe(first);
++
++  forgetConfig("fixtures/themed");
++  expect(readConfigCached("fixtures/themed")).not.toBe(first);
++});
